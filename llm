@@ -1,0 +1,119 @@
+#!/bin/sh
+# Usage: llm [-s service] [-m model] [-r] prompt...
+# Dependencies: curl, jq
+
+# TODO markdown formatting (lowdown?) (-r disables this)
+# TODO openai
+
+# example models:
+# - gemini-2.0-flash-exp (gemini)
+# - gemini-1.5-pro (gemini)
+# - phi4 (ollama)
+# - llama3.2:3b (ollama)
+# - llama3.1 (ollama)
+# - Qwen/Qwen2.5-72B-Instruct (hf)
+
+set -e
+
+service=gemini
+model=""
+raw=0
+
+escape() {
+    printf '%s' "$*" | sed 's/["\\]/\\&/g'
+}
+
+render() {
+    if test "$raw" -eq 0; then
+        md
+    else
+        cat
+    fi
+}
+
+gemini() {
+    if test -z "$GEMINI_API_KEY"; then
+        printf 'Environment variable GEMINI_API_KEY must be set\n' >&2
+        exit 1
+    fi
+    : ${model:="gemini-2.0-flash-exp"}
+    url="https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$GEMINI_API_KEY"
+    payload='{
+        "contents": [{
+            "role": "user",
+            "parts": [
+                {"text": "'"$(escape "$*")"'"}
+            ]
+        }]
+    }'
+    printf "Using model '%s' with service 'gemini'\n\n" "$model" >&2
+    curl -s "$url" -H 'Content-Type: application/json' -d "$payload" \
+        | jq -j '
+            if .error then
+                error(.error.message)
+            else
+                .candidates[0].content.parts[0].text
+            end' \
+        | render
+}
+
+hf() {
+    if test -z "$HF_API_KEY"; then
+        printf 'Environment variable HF_API_KEY must be set\n' >&2
+        exit 1
+    fi
+    : ${model:="Qwen/Qwen2.5-72B-Instruct"}
+    url="https://api-inference.huggingface.co/models/$model/v1/chat/completions"
+    payload='{
+        "model": "'"$model"'",
+        "messages": [
+            {
+                "role": "user",
+                "content": "write a haiku"
+            }
+        ]
+    }'
+    printf "Using model '%s' with service 'hf' (huggingface)\n\n" "$model" >&2
+    result=$(curl -s "$url" -H "Authorization: Bearer $HF_API_KEY" -H 'Content-Type: application/json' -d "$payload")
+    printf '%s' "$result" | jq -r '.choices[0].message.content' | render
+}
+
+ollama() {
+    : ${model:="llama3.1"}
+    url="http://localhost:11434/api/generate"
+    payload='{
+        "model": "'"$model"'",
+        "prompt": "'"$(escape "$*")"'",
+        "stream": false
+    }'
+    printf "Using model '%s' with service 'ollama'\n\n" "$model" >&2
+    curl -s "$url" -d "$payload" \
+        | jq -r '.response' \
+        | render
+}
+
+main() {
+    while getopts "s:m:r" opt; do
+        case $opt in
+            s) service=$OPTARG ;;
+            m) model=$OPTARG ;;
+            r) raw=1 ;;
+            \?) echo "Invalid option: -$OPTARG" >&2 ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    if test $# -eq 0; then
+        read input
+        set -- "$input"
+    fi
+
+    case $service in
+        gemini) gemini "$*" ;;
+        hf) hf "$*" ;;
+        ollama) ollama "$*" ;;
+        *) printf 'Unknown service %s\n' "$service" >&2; exit 1 ;;
+    esac
+}
+
+main "$@"

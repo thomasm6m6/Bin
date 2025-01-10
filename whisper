@@ -1,0 +1,5 @@
+#!/bin/sh
+
+d=~/code/world/whisper.cpp
+model=${MODEL:=ggml-large-v3-turbo.bin}
+"$d/main" -m "$d/models/$model" "$@"
