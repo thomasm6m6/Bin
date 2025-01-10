@@ -1,0 +1,3 @@
+#!/bin/sh
+
+ffprobe -v error -count_frames -show_entries stream=nb_read_frames -of csv=p=0 "$@"
