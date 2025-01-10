@@ -1,0 +1,34 @@
+#!/bin/sh
+set -e
+
+#Traceback (most recent call last):
+#  File "/Users/tm/bin/gemini", line 27, in <module>
+#    text = data["candidates"][0]["content"]["parts"][0]["text"]
+#KeyError: 'content'
+
+# TODO compile to wasm and host on GH Pages (maybe)
+
+# FIXME cuts off near end of https://www.youtube.com/shorts/xNNV9Y7RRs0
+# also https://youtube.com/shorts/_YVjUSngi0Q?si=IjhMslD6nyDczdpe
+
+# broader idea: has three view options: regular video with captions (regular mode), text mode, and karaoke mode. supports local files and youtube.
+# For the UI, I'm imagining a horizontal list of capsule-shaped buttons like Google Drive has (more broadly, I suppose, Material style). Upper left corner.
+
+url=${1:-$(pbpaste)}
+printf '%s\n' "$url" >&2
+
+tempdir=${TMPDIR:-/tmp}/$$
+mkdir "$tempdir"
+tempfile=$tempdir/out
+tempwav=$tempdir/out.wav
+temptxt=$tempdir/out.txt
+
+yt-dlp -q -f 'wa*' -o "$tempfile" "$url"
+ffmpeg -v error -i "$tempfile" -ar 16000 "$tempwav"
+whisper -np "$tempwav" | sed 's/\[[^]]*]   //' > "$temptxt"
+{
+	printf 'Reformat the following document. Do not modify the content.\n\n'
+	cat "$temptxt"
+} | llm -s ollama
+
+rm -r "$tempdir"
