@@ -1,0 +1,6 @@
+#!/bin/sh
+
+osascript -e '
+set currVol to output volume of (get volume settings)
+set volume output volume (currVol - 6.25)
+'

@@ -1,0 +1,9 @@
+#!/bin/sh
+
+input=$(cat)
+left=$(printf '%s' "$input" | tr -cd '(' | wc -c)
+right=$(printf '%s' "$input" | tr -cd ')' | wc -c)
+
+printf '%d left, %d right\n' "$left" "$right" >&2
+
+test "$left" -eq "$right"

@@ -1,5 +1,18 @@
-#!/bin/sh
+#!/usr/bin/env -S uv --quiet run --script
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#     "mlx-whisper",
+# ]
+# ///
 
-d=~/code/world/whisper.cpp
-model=${MODEL:=ggml-large-v3-turbo.bin}
-"$d/main" -m "$d/models/$model" "$@"
+import sys
+import mlx_whisper
+
+model_path = "/Users/tm/models/mlx/whisper-large-v3-mlx"
+
+for file in sys.argv[1:]:
+    result = mlx_whisper.transcribe(file, path_or_hf_repo=model_path)
+    base = file.rsplit('.', 1)[0]
+    with open(base + '.txt', 'w') as f:
+        f.write(result['text'])

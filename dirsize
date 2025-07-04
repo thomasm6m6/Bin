@@ -1,0 +1,4 @@
+#!/bin/sh
+# get the size of a directory and its largest children
+
+du -hd1 "${1-.}" 2>/dev/null | sort -h | tail
