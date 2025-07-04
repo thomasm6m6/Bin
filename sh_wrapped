@@ -1,0 +1,134 @@
+#!/bin/sh
+# -c cutoff (-1 for no cutoff, default 1)
+# -f histfile (default $HISTFILE or ~/.zsh_history)
+# vim=vi nvim=vi lc=ls emacs=
+# note: histfile parsing assumes zsh
+
+awk '
+function max(a, b) {
+  return a > b ? a : b
+}
+function round(x) {
+  return int(x + 0.5)
+}
+function getopts(optstr, args, vals) {
+  if (index(optstr, ":") == 1) {
+    print "Error: optstr must not begin with \":\"" > "/dev/stderr"
+    exit 1
+  }
+  split(optstr, optlist, "")
+  for (i = 1; i <= length(optlist); i++) {
+    opt = optlist[i]
+    if (opt == ":") {
+      opts[lastopt] = 2
+    } else {
+      opts[opt] = 1
+      lastopt = opt
+    }
+  }
+  while (index(ARGV[1], "-") == 1) {
+    skip = 1
+    arg = ARGV[1]
+    ch = substr(arg, 2, 1)
+    if (opts[ch] == 1) {
+      args[ch] = 1
+    } else if (opts[ch] == 2) {
+      if (length(arg) > 2) {
+        val = substr(arg, 3)
+      } else if (ARGC == 1) {
+        print "Option requires argument:", arg > "/dev/stderr"
+        exit 1
+      } else {
+        val = ARGV[2]
+        skip = 2
+      }
+      args[ch] = 1
+      vals[ch] = val
+    } else {
+      print "Bad option:", arg > "/dev/stderr"
+      exit 1
+    }
+    for (i = 1; i < ARGC; i++) {
+      ARGV[i] = ARGV[i+skip]
+    }
+    ARGC -= skip
+  }
+}
+
+BEGIN {
+  cutoff = 1
+  histfile = ENVIRON["HOME"] "/.zsh_history"
+
+  getopts("c:f:", args, vals)
+  cutoff = "c" in args ? vals["c"] : 1
+  histfile = "f" in args ? vals["f"] : ENVIRON["HOME"] "/.zsh_history"
+  for (i = 1; i < ARGC; i++) {
+    if (index(ARGV[i], "=")) {
+      split(ARGV[i], parts, "=")
+      if (parts[1] in aliases || parts[1] in excludes) {
+        printf "Error: %s given twice as alias key\n", parts[1] > "/dev/stderr"
+        exit 1
+      }
+      if (parts[2]) {
+        aliases[parts[1]] = parts[2]
+      } else {
+        excludes[parts[1]] = 1
+      }
+      delete ARGV[i]
+    } else {
+      print "Bad argument:", ARGV[i] > "/dev/stderr"
+      exit 1
+    }
+  }
+
+  ARGV[1] = histfile
+  ARGC = 2
+}
+
+{
+  if (!continuation) {
+    for (i = 1; i <= NF; i++) {
+      if (index($i, "#") == 1) {
+        break
+      }
+      if (index($i, "=") == 0) {
+        cmd = $i
+        if (index(cmd, "/") != 0) {
+          cmd = sub(/.*\//, "", $i)
+        } else if (index(cmd, "\\") == 1) {
+          cmd = substr($i, 2)
+        }
+        if (aliases[cmd]) {
+          cmd = aliases[cmd]
+        }
+        allcmds[cmd]++
+        ncmds++
+        break
+      }
+    }
+  }
+  continuation = substr($0, length) == "\\"
+}
+
+END {
+  i = 0
+  for (cmd in allcmds) {
+    cmdruns = allcmds[cmd]
+    percent = round(cmdruns / ncmds * 100)
+    if (percent > cutoff && !(cmd in excludes)) {
+      maxlen = max(maxlen, length(cmd))
+      maxpercent = max(maxpercent, percent)
+      percents[i] = percent
+      cmds[i] = cmd
+      counts[i] = cmdruns
+      i++
+    }
+  }
+  for (i = 0; i < length(cmds); i++) {
+    pad = maxpercent >= 10 && percents[i] < 10 ? " " : ""
+    countmsg = sprintf("(%d%%, %s%d)", percents[i], pad, counts[i])
+    nchars = maxlen + length(countmsg) - length(cmds[i])
+    printf "\033[1m%s\033[0m \033[38;5;249m%*s\033[0m\n",
+      cmds[i], nchars, countmsg
+  }
+}' "$@" | sort -n -t, -k2
